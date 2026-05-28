@@ -79,6 +79,22 @@ datetime g_last_ltf_bar = 0;
 datetime g_last_htf_bar = 0;
 datetime g_last_day     = 0;
 
+// How many sweep events we have already sent Telegram messages for.
+// Reset each new day alongside Sweep_OnNewDay.
+int g_sweep_last_notify = 0;
+
+// Proximity alert dedup — one flag per watched level.
+// Flag stays true while price is inside the notify zone; cleared when price
+// retreats far enough, so a fresh approach re-arms the alert.
+#define PROX_COUNT 6
+#define PROX_PDH   0
+#define PROX_PDL   1
+#define PROX_PDM   2
+#define PROX_AH    3
+#define PROX_AL    4
+#define PROX_MN    5
+bool g_prox_notified[PROX_COUNT];
+
 #define BOTEN_OBJ_PREFIX "BOT_"
 
 //===================================================================//
@@ -90,6 +106,7 @@ int OnInit()
    BotenSessions_Configure(InpAutoDST, InpBrokerOffsetWinter, InpBrokerOffsetSummer);
    BotenAlerts_Configure(InpAlertPopup, InpAlertPush, InpAlertEmail, InpAlertCooldownSeconds);
    BotenAlerts_Reset();
+   BotenTelegram_Configure(InpTelegramEnabled, InpTelegramToken, InpTelegramChatID);
 
    BotenConfig_Resolve();
 
@@ -153,6 +170,8 @@ int OnCalculate(const int        rates_total,
       VolumeProfile_Update(g_vp, _Symbol);
       MidnightOpen_Update(g_mn_open, _Symbol, now);
       Sweep_OnNewDay(g_sweep);
+      g_sweep_last_notify = 0;
+      ArrayInitialize(g_prox_notified, false);
 
       if(InpShowPDLevels || InpShowPWLevels)
          PrevDayLevels_Draw(g_pdl, BOTEN_OBJ_PREFIX,
@@ -221,6 +240,27 @@ int OnCalculate(const int        rates_total,
                     g_pdl, g_asia, InpSweepLookbackBars);
       if(InpShowSweepArrows)
          Sweep_Draw(g_sweep, BOTEN_OBJ_PREFIX);
+
+      // Telegram sweep alerts: fire immediately for each new sweep event,
+      // independently of the confluence score threshold.
+      if(InpTelegramEnabled && InpTelegramSweepAlert)
+      {
+         for(int si = g_sweep_last_notify; si < g_sweep.count; si++)
+         {
+            if(!g_sweep.events[si].valid) continue;
+            string react = (g_sweep.events[si].direction > 0) ? "bullish" : "bearish";
+            string msg   = StringFormat(
+               "SWEEP | %s | %s swept @ %.2f (level %.2f) | expect %s | %s",
+               _Symbol,
+               g_sweep.events[si].level_tag,
+               g_sweep.events[si].wick_price,
+               g_sweep.events[si].level_price,
+               react,
+               TimeToString(g_sweep.events[si].time));
+            BotenTelegram_Send(msg);
+         }
+         g_sweep_last_notify = g_sweep.count;
+      }
    }
 
    // New-bar work on the HTF (market structure + bias score).
@@ -233,6 +273,9 @@ int OnCalculate(const int        rates_total,
       PowerOfThree_Update(g_pof3, _Symbol, now);
       BiasEngine_Update(g_bias, g_pdl, g_asia, g_struct, g_pof3);
    }
+
+   // Proximity alerts run on every tick (dedup prevents spam).
+   CheckProximityAlerts();
 
    // Decision layer: compute confluence score every new LTF bar.
    if(new_ltf)
@@ -249,6 +292,55 @@ int OnCalculate(const int        rates_total,
 
    ChartRedraw(0);
    return rates_total;
+}
+
+//===================================================================//
+//                Proximity: alert when price nears a key level      //
+//===================================================================//
+// Fires once per approach; re-arms when price retreats beyond 4x the
+// notify zone so a new approach triggers a fresh message.
+void CheckProximityAlerts()
+{
+   if(!InpTelegramEnabled || !InpTelegramProximityAlert) return;
+   if(g_boten_cfg.point <= 0.0) return;
+
+   double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+   double notify_zone = (InpTelegramProximityPoints > 0)
+      ? InpTelegramProximityPoints * g_boten_cfg.point
+      : g_boten_cfg.level_proximity_price * 2.0;
+   if(notify_zone <= 0.0) return;
+
+   double lv[PROX_COUNT];
+   string lt[PROX_COUNT];
+   lv[PROX_PDH] = g_pdl.pdh;                              lt[PROX_PDH] = "PDH";
+   lv[PROX_PDL] = g_pdl.pdl;                              lt[PROX_PDL] = "PDL";
+   lv[PROX_PDM] = g_pdl.pdm;                              lt[PROX_PDM] = "PDM";
+   lv[PROX_AH]  = g_asia.finalised ? g_asia.high : 0.0;  lt[PROX_AH]  = "Asia High";
+   lv[PROX_AL]  = g_asia.finalised ? g_asia.low  : 0.0;  lt[PROX_AL]  = "Asia Low";
+   lv[PROX_MN]  = g_mn_open.price;                        lt[PROX_MN]  = "Midnight Open";
+
+   for(int i = 0; i < PROX_COUNT; i++)
+   {
+      if(lv[i] <= 0.0) continue;
+      double dist = MathAbs(price - lv[i]);
+
+      if(dist < notify_zone && !g_prox_notified[i])
+      {
+         string side = (price < lv[i]) ? "below" : "above";
+         string msg  = StringFormat(
+            "APPROACHING | %s | price %.2f approaching %s %.2f (%.0f pts away) | from %s",
+            _Symbol, price, lt[i], lv[i],
+            dist / g_boten_cfg.point, side);
+         BotenTelegram_Send(msg);
+         g_prox_notified[i] = true;
+      }
+      else if(dist >= notify_zone * 4.0)
+      {
+         // Price has moved well away — re-arm so the next approach fires again.
+         g_prox_notified[i] = false;
+      }
+   }
 }
 
 //===================================================================//

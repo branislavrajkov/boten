@@ -6,6 +6,7 @@
 #define __BOTEN_ALERTS_MQH__
 
 #include <Boten/Utils/Logger.mqh>
+#include <Boten/Utils/Telegram.mqh>
 
 // Configuration toggles populated from inputs in Boten.mq5.
 bool g_boten_alert_popup    = true;
@@ -84,6 +85,8 @@ void BotenAlerts_Fire(const string id,
 
    if(g_boten_alert_email)
       SendMail(title, body);
+
+   BotenTelegram_Send(full);
 
    BotenLogInfo("ALERT " + id + " :: " + full);
 }

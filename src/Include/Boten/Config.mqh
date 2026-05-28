@@ -101,6 +101,14 @@ input bool InpAlertPush            = false;
 input bool InpAlertEmail           = false;
 input int  InpAlertCooldownSeconds = 60;
 
+input group "=== Telegram ==="
+input bool   InpTelegramEnabled         = false;    // Enable Telegram notifications
+input string InpTelegramToken           = "";       // Bot token from @BotFather
+input string InpTelegramChatID          = "";       // Channel/group/user chat_id
+input bool   InpTelegramProximityAlert  = true;     // Alert when price gets close to a key level
+input int    InpTelegramProximityPoints = 0;        // 0 = use 2x InpLevelProximityPoints
+input bool   InpTelegramSweepAlert      = true;     // Alert on confirmed sweep (wick-through-and-close)
+
 //===================================================================//
 //                  RESOLVED CONFIG (filled in OnInit)                //
 //===================================================================//

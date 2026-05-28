@@ -92,3 +92,43 @@ The score weights are documented in [`docs/strategy.md`](docs/strategy.md). Ever
 - DST inference assumes EU schedule (most MT5 brokers). If your broker runs US DST or no DST, set `InpAutoDST=false`.
 - The H4 BOS/CHoCH detector uses fractal swings. It is robust on indices, but extremely choppy news days can produce noisy structure events.
 # boten
+
+
+Next steps:
+
+1. Get your chat_id
+
+If you haven't already — send any message to your bot/channel, then open this in a browser (replace TOKEN with your actual token):
+
+
+https://api.telegram.org/botTOKEN/getUpdates
+Look for "chat":{"id":...} in the response. That number is your InpTelegramChatID. For channels it starts with -100.
+
+2. Allow WebRequest in MT5
+
+MT5 → Tools → Options → Expert Advisors tab:
+
+Tick "Allow WebRequest for listed URLs"
+Add: https://api.telegram.org
+3. Deploy the files
+
+Copy to your MT5 data folder (File → Open Data Folder):
+
+Boten.mq5 → MQL5/Indicators/Boten.mq5
+Include/Boten/ → MQL5/Include/Boten/ (the whole folder)
+4. Compile
+
+Open MetaEditor → open Boten.mq5 → press F7. Should compile with 0 errors.
+
+5. Attach to chart and fill inputs
+
+In the === Telegram === group:
+
+InpTelegramEnabled = true
+InpTelegramToken = your bot token
+InpTelegramChatID = your chat id
+Leave InpTelegramProximityPoints = 0 (uses 2× the symbol's default proximity)
+Both alert types default to true
+6. Test it
+
+Send a test message by temporarily setting InpTevelProximityPoints very large (e.g. 999) — price will immediately be "near" every level and you'll get APPROACHING messages within the first tick. Then set it back to 0.
