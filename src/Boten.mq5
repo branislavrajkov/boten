@@ -83,6 +83,12 @@ datetime g_last_day     = 0;
 // Reset each new day alongside Sweep_OnNewDay.
 int g_sweep_last_notify = 0;
 
+// Zone-level alert dedup: track the zone ID of the last fired setup alert.
+// Once a zone fires, it will not fire again until a different zone is identified
+// or a new day resets the state. This prevents repeated alerts for the same
+// FVG/OB zone while price stays in the confluence area across many LTF bars.
+string g_last_alerted_zone = "";
+
 // Proximity alert dedup — one flag per watched level.
 // Flag stays true while price is inside the notify zone; cleared when price
 // retreats far enough, so a fresh approach re-arms the alert.
@@ -170,7 +176,8 @@ int OnCalculate(const int        rates_total,
       VolumeProfile_Update(g_vp, _Symbol);
       MidnightOpen_Update(g_mn_open, _Symbol, now);
       Sweep_OnNewDay(g_sweep);
-      g_sweep_last_notify = 0;
+      g_sweep_last_notify  = 0;
+      g_last_alerted_zone  = "";
       ArrayInitialize(g_prox_notified, false);
 
       if(InpShowPDLevels || InpShowPWLevels)
@@ -459,7 +466,10 @@ void DecideAndDraw(const datetime now)
       target = (g_pdl.pdl < price) ? g_pdl.pdl : price - 2.0 * (stop - price);
    }
 
-   string id = StringFormat("%s_%I64d_%d_%d", _Symbol, (long)zone_t1, dir, score);
+   // ID identifies the zone itself (symbol + when it formed + direction).
+   // Score is intentionally excluded: the same zone should always produce the
+   // same ID regardless of how confluence fluctuates bar to bar.
+   string id = StringFormat("%s_%I64d_%d", _Symbol, (long)zone_t1, dir);
 
    g_last_setup_id   = id;
    g_last_setup_time = now;
@@ -470,6 +480,13 @@ void DecideAndDraw(const datetime now)
 
    if(InpShowEntryZone)
       DrawEntryZone(id, zone_low, zone_high, stop, target, zone_t1, now);
+
+   // Only fire once per zone. A zone is identified by symbol + formation time +
+   // direction. If the same zone keeps scoring above threshold across many bars,
+   // we do not repeat the alert — the zone hasn't changed, just the bar has.
+   if(id == g_last_alerted_zone)
+      return;
+   g_last_alerted_zone = id;
 
    string title = StringFormat("Boten %s %s setup (score %d)",
                                 _Symbol,

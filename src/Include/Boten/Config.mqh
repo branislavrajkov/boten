@@ -99,7 +99,7 @@ input group "=== Alerts ==="
 input bool InpAlertPopup           = true;
 input bool InpAlertPush            = false;
 input bool InpAlertEmail           = false;
-input int  InpAlertCooldownSeconds = 60;
+input int  InpAlertCooldownSeconds = 14400;   // 4 hours — secondary guard
 
 input group "=== Telegram ==="
 input bool   InpTelegramEnabled         = false;    // Enable Telegram notifications
