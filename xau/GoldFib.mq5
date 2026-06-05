@@ -13,9 +13,9 @@
 #property version    "1.00"
 #property strict
 
-#include "Include/XAU/FibManager.mqh"
-#include "Include/XAU/Signal.mqh"
-#include "Include/XAU/TradeManager.mqh"
+#include <XAU/FibManager.mqh>
+#include <XAU/Signal.mqh>
+#include <XAU/TradeManager.mqh>
 
 //===================================================================//
 //                          Inputs                                    //
